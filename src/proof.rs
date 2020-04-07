@@ -1,7 +1,8 @@
+extern crate codec;
+use self::codec::{Decode, Encode};
+use ring::digest::Algorithm;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-
-use ring::digest::Algorithm;
 
 use hashutils::HashUtils;
 use tree::Tree;
@@ -9,10 +10,11 @@ use tree::Tree;
 /// An inclusion proof represent the fact that a `value` is a member
 /// of a `MerkleTree` with root hash `root_hash`, and hash function `algorithm`.
 #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Encode)]
 pub struct Proof<T> {
     /// The hashing algorithm used in the original `MerkleTree`
     #[cfg_attr(feature = "serialization-serde", serde(with = "algorithm_serde"))]
+    #[codec(skip)]
     pub algorithm: &'static Algorithm,
 
     /// The hash of the root of the original `MerkleTree`
@@ -24,6 +26,7 @@ pub struct Proof<T> {
     /// The value concerned by this `Proof`
     pub value: T,
 }
+///I'am apply `#[codec(skip)]` to a field in my custom struct, for some reason, it works only for `#[derive(Encode)]` but failed for `#[derive(Decode]`.  Still got `the trait `std::default::Default` is not implemented for `&ring::digest::Algorithm`.
 
 #[cfg(feature = "serialization-serde")]
 mod algorithm_serde {
@@ -166,7 +169,7 @@ impl<T> Proof<T> {
 /// and a sub lemma, whose `node_hash`, when combined with this `sibling_hash`
 /// must be equal to this `node_hash`.
 #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
 pub struct Lemma {
     pub node_hash: Vec<u8>,
     pub sibling_hash: Option<Positioned<Vec<u8>>>,
@@ -322,7 +325,7 @@ impl Lemma {
 
 /// Tags a value so that we know from which branch of a `Tree` (if any) it was found.
 #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
 pub enum Positioned<T> {
     /// The value was found in the left branch
     Left(T),
