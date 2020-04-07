@@ -1,6 +1,7 @@
 extern crate codec;
 use self::codec::{Decode, Encode};
 use ring::digest::Algorithm;
+use ring::digest::SHA256;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
@@ -9,11 +10,11 @@ use tree::Tree;
 
 /// An inclusion proof represent the fact that a `value` is a member
 /// of a `MerkleTree` with root hash `root_hash`, and hash function `algorithm`.
-#[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, Encode)]
 pub struct Proof<T> {
     /// The hashing algorithm used in the original `MerkleTree`
-    #[cfg_attr(feature = "serialization-serde", serde(with = "algorithm_serde"))]
+    // #[cfg_attr(feature = "serialization-serde", serde(with = "algorithm_serde"))]
     #[codec(skip)]
     pub algorithm: &'static Algorithm,
 
@@ -26,82 +27,114 @@ pub struct Proof<T> {
     /// The value concerned by this `Proof`
     pub value: T,
 }
-///I'am apply `#[codec(skip)]` to a field in my custom struct, for some reason, it works only for `#[derive(Encode)]` but failed for `#[derive(Decode]`.  Still got `the trait `std::default::Default` is not implemented for `&ring::digest::Algorithm`.
 
-#[cfg(feature = "serialization-serde")]
-mod algorithm_serde {
-    use ring::digest::{self, Algorithm};
-    use serde::de::Error;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub fn serialize<S: Serializer>(
-        algorithm: &'static Algorithm,
-        se: S,
-    ) -> Result<S::Ok, S::Error> {
-        // The `Debug` implementation of `Algorithm` prints its ID.
-        format!("{:?}", algorithm).serialize(se)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<&'static Algorithm, D::Error> {
-        let alg_str: String = Deserialize::deserialize(de)?;
-        match &*alg_str {
-            "SHA1" => Ok(&digest::SHA1_FOR_LEGACY_USE_ONLY),
-            "SHA256" => Ok(&digest::SHA256),
-            "SHA384" => Ok(&digest::SHA384),
-            "SHA512" => Ok(&digest::SHA512),
-            "SHA512_256" => Ok(&digest::SHA512_256),
-            _ => Err(D::Error::custom("unknown hash algorithm")),
-        }
-    }
-
-    #[cfg(test)]
-    mod test {
-        use super::*;
-        use ring::digest::{
-            SHA1_FOR_LEGACY_USE_ONLY as sha1, SHA256 as sha256, SHA384 as sha384, SHA512 as sha512,
-            SHA512_256 as sha512_256,
-        };
-
-        static SHA1: &Algorithm = &sha1;
-        static SHA256: &Algorithm = &sha256;
-        static SHA384: &Algorithm = &sha384;
-        static SHA512: &Algorithm = &sha512;
-        static SHA512_256: &Algorithm = &sha512_256;
-
-        #[test]
-        fn test_serialize_known_algorithms() {
-            extern crate serde_json;
-
-            for alg in &[SHA1, SHA256, SHA384, SHA512, SHA512_256] {
-                let mut serializer = serde_json::Serializer::with_formatter(
-                    vec![],
-                    serde_json::ser::PrettyFormatter::new(),
-                );
-
-                serialize(alg, &mut serializer).unwrap_or_else(|_| panic!("{:?}", alg));
-
-                let alg_ = deserialize(&mut serde_json::Deserializer::from_slice(
-                    &serializer.into_inner()[..],
-                ))
-                .unwrap_or_else(|_| panic!("{:?}", alg));
-
-                assert_eq!(*alg, alg_);
-            }
-        }
-
-        #[test]
-        #[should_panic(expected = "unknown hash algorithm")]
-        fn test_serialize_unknown_algorithm() {
-            extern crate serde_json;
-            {
-                let alg_str = "\"BLAKE2b\"";
-                let mut deserializer = serde_json::Deserializer::from_str(alg_str);
-                let _ = deserialize(&mut deserializer)
-                    .unwrap_or_else(|_| panic!("unknown hash algorithm {:?}", alg_str));
-            }
-        }
+impl<T> Decode for Proof<T>
+where
+    T: Decode,
+{
+    fn decode<DecIn: codec::Input>(input: &mut DecIn) -> Result<Self, codec::Error> {
+        Ok(Proof {
+            algorithm: &SHA256,
+            root_hash: {
+                let res = Decode::decode(input);
+                match res {
+                    Err(_) => return Err("Error decoding field Proof.root_hash".into()),
+                    Ok(a) => a,
+                }
+            },
+            lemma: {
+                let res = Decode::decode(input);
+                match res {
+                    Err(_) => return Err("Error decoding field Proof.lemma".into()),
+                    Ok(a) => a,
+                }
+            },
+            value: {
+                let res = Decode::decode(input);
+                match res {
+                    Err(_) => return Err("Error decoding field Proof.value".into()),
+                    Ok(a) => a,
+                }
+            },
+        })
     }
 }
+///I'am apply `#[codec(skip)]` to a field in my custom struct, for some reason, it works only for `#[derive(Encode)]` but failed for `#[derive(Decode]`.  Still got `the trait `std::default::Default` is not implemented for `&ring::digest::Algorithm`.
+
+// #[cfg(feature = "serialization-serde")]
+// mod algorithm_serde {
+//     use ring::digest::{self, Algorithm};
+//     use serde::de::Error;
+//     use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+//     pub fn serialize<S: Serializer>(
+//         algorithm: &'static Algorithm,
+//         se: S,
+//     ) -> Result<S::Ok, S::Error> {
+//         // The `Debug` implementation of `Algorithm` prints its ID.
+//         format!("{:?}", algorithm).serialize(se)
+//     }
+
+//     pub fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<&'static Algorithm, D::Error> {
+//         let alg_str: String = Deserialize::deserialize(de)?;
+//         match &*alg_str {
+//             "SHA1" => Ok(&digest::SHA1_FOR_LEGACY_USE_ONLY),
+//             "SHA256" => Ok(&digest::SHA256),
+//             "SHA384" => Ok(&digest::SHA384),
+//             "SHA512" => Ok(&digest::SHA512),
+//             "SHA512_256" => Ok(&digest::SHA512_256),
+//             _ => Err(D::Error::custom("unknown hash algorithm")),
+//         }
+//     }
+
+//     #[cfg(test)]
+//     mod test {
+//         use super::*;
+//         use ring::digest::{
+//             SHA1_FOR_LEGACY_USE_ONLY as sha1, SHA256 as sha256, SHA384 as sha384, SHA512 as sha512,
+//             SHA512_256 as sha512_256,
+//         };
+
+//         static SHA1: &Algorithm = &sha1;
+//         static SHA256: &Algorithm = &sha256;
+//         static SHA384: &Algorithm = &sha384;
+//         static SHA512: &Algorithm = &sha512;
+//         static SHA512_256: &Algorithm = &sha512_256;
+
+//         #[test]
+//         fn test_serialize_known_algorithms() {
+//             extern crate serde_json;
+
+//             for alg in &[SHA1, SHA256, SHA384, SHA512, SHA512_256] {
+//                 let mut serializer = serde_json::Serializer::with_formatter(
+//                     vec![],
+//                     serde_json::ser::PrettyFormatter::new(),
+//                 );
+
+//                 serialize(alg, &mut serializer).unwrap_or_else(|_| panic!("{:?}", alg));
+
+//                 let alg_ = deserialize(&mut serde_json::Deserializer::from_slice(
+//                     &serializer.into_inner()[..],
+//                 ))
+//                 .unwrap_or_else(|_| panic!("{:?}", alg));
+
+//                 assert_eq!(*alg, alg_);
+//             }
+//         }
+
+//         #[test]
+//         #[should_panic(expected = "unknown hash algorithm")]
+//         fn test_serialize_unknown_algorithm() {
+//             extern crate serde_json;
+//             {
+//                 let alg_str = "\"BLAKE2b\"";
+//                 let mut deserializer = serde_json::Deserializer::from_str(alg_str);
+//                 let _ = deserialize(&mut deserializer)
+//                     .unwrap_or_else(|_| panic!("unknown hash algorithm {:?}", alg_str));
+//             }
+//         }
+//     }
+// }
 
 impl<T: PartialEq> PartialEq for Proof<T> {
     fn eq(&self, other: &Proof<T>) -> bool {
@@ -168,7 +201,7 @@ impl<T> Proof<T> {
 /// A `Lemma` holds the hash of a node, the hash of its sibling node,
 /// and a sub lemma, whose `node_hash`, when combined with this `sibling_hash`
 /// must be equal to this `node_hash`.
-#[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
 pub struct Lemma {
     pub node_hash: Vec<u8>,
@@ -324,7 +357,7 @@ impl Lemma {
 }
 
 /// Tags a value so that we know from which branch of a `Tree` (if any) it was found.
-#[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
+// #[cfg_attr(feature = "serialization-serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
 pub enum Positioned<T> {
     /// The value was found in the left branch
